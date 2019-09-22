@@ -1,0 +1,174 @@
+
+The dataset can be downloaded from https://www.kaggle.com/abcsds/pokemon/downloads/pokemon.zip/2
+
+
+#Introduction
+The aim of the project is to predict whether a pokemon is legendary or not. As the prediction will either be a yes or a no, a logical regression model would be required, and a classification tree would be used to benefit the predictions. The dataset available has the attributes of each pokemon and these will be used as predictors. We will also be able to infer which attribute factors in the most for the legendary status.
+
+
+First we load up the libraries that might be required for us in the project.
+```{r}
+library(ISLR)
+library(corrplot)
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(caret)
+library(tree)
+library(randomForest)
+library(e1071)
+```
+For the first part of the project we try to predict and plot the "legendary" status of pokemons using logical regression.
+```{r}
+pokemon=read.csv("Pokemon.csv")
+pokemon$legend
+pokemon$legend=ifelse(pokemon$Legendary=="False" , 0, 1)
+```
+```{r}
+summary(pokemon)
+```
+The summary gives us the range and the mean of columns which might be used for predictions .
+```{r}
+hist(pokemon$legend, breaks = 2,main= "Histogram of the amount of Legendary Pokemons", xlab = "Status")
+boxplot(legend~Sp..Atk, data = pokemon, xlab = "Special Attack", ylab = "Legendary Status")
+boxplot(legend~Total, data = pokemon, xlab = "Total", ylab = "Legendary Status")
+
+```
+Being a logical factor, the legend data will not be normally distributed. Due to our requirements the data will also not be normalised. With the plots we can observe that the legendary pokemons are grouped together. This can be used to get better information when plotting the tree.
+```{r}
+t.test(pokemon$Sp..Atk~pokemon$legend)
+t.test(pokemon$Speed~pokemon$legend)
+t.test(pokemon$Attack~pokemon$legend)
+```
+The p value for Sp..Atk , Attack and Speed are very low showing high correlation with the legendary status.
+```{r}
+corrplot(cor(pokemon[,c(6:11,14)]))
+```
+Lookin at the corrplot we can observe that the data set is sufficiently correlated with each factor. The predictor Sp..Atk is the most correlated of the lot so we will be selecting that for our single predictor model.
+```{r}
+pokemon=pokemon[,c(2,3,5:14)]
+
+```
+No missing data in the dataset and unnecessary columns are removed. Linear regression would not be considered here as the predicted data is logical in nature.
+```{r}
+set.seed(100)
+training_rows=sample(1:800,size = 400, replace = FALSE)
+pokemon1=pokemon[training_rows,]
+pokemon2=pokemon[-training_rows,]
+```
+Here we split the data set into 2, 1 for our training data and 2 for the test data to evaluvate our predictions.
+```{r}
+logit=glm(legend~Sp..Atk,data = pokemon1, family = binomial)
+plot(legend~Sp..Atk,data = pokemon1,col= "brown",pch = 16, xlab="Special Attack", ylab = "Legend")
+curve(predict(logit,data.frame(Sp..Atk=x),type="resp"),add=TRUE)
+summary(logit)
+set.seed(123)
+ctrl = trainControl(method = "repeatedcv", number = 10, savePredictions = TRUE)
+mod_fit = train(Legendary ~ Sp..Atk,  data=pokemon1, method="glm", family="binomial",trControl = ctrl, tuneLength = 5)
+pred = predict(mod_fit, newdata=pokemon1)
+sum=sum(pokemon1[,11]!=pred)
+misclass=(sum/800)
+
+```
+Sp.Atk is used as a predictor to predict the legendary status. Cross validation is also done to calculate the misclassification rate.
+```{r}
+logit1=glm(Legendary~Attack+Defense+HP+Speed+Sp..Def+Sp..Atk,data = pokemon1, family = binomial)
+newdata = expand.grid(Sp..Atk=seq(10,194, length.out=400), Attack = 79, Defense = 73.84, HP = 69.26, Speed = 68.28, Sp..Def= 71.9)
+newdata$prob = predict(logit1, newdata, type="response")
+summary(logit1)
+set.seed(123)
+mod_fit1 <- train(Legendary ~ Attack+Defense+HP+Speed+Sp..Def+Sp..Atk,  data=pokemon1, method="glm", family="binomial",trControl = ctrl, tuneLength = 5)
+pred1 = predict(mod_fit1, newdata=pokemon1)
+sum1=sum(pokemon1[,11]!=pred1)
+misclass1=(sum1/800)
+coefficients(logit1)
+```
+The most optimum values of p are inferred from the columns Sp..Atk and Speed. They are used to create an optimal model.
+```{r}
+logit2=glm(Legendary~Sp..Atk+Speed,data = pokemon1, family = binomial)
+new1=data.frame(Sp..Atk=seq(10,194, length.out=400),Speed = 68.28)
+new1$pred=predict(logit2,new1,type="resp")
+summary(logit2)
+set.seed(123)
+mod_fit2 <- train(Legendary ~ Sp..Atk+Speed,  data=pokemon1, method="glm", family="binomial",trControl = ctrl, tuneLength = 5)
+pred2 = predict(mod_fit2, newdata=pokemon1)
+sum2=sum(pokemon1[,11]!=pred2)
+misclass2=(sum2/800)
+
+```
+Attack had a high p value at the model with all predictors. As it was correlated with other predictors, another model was created with just attack as a predictor. But the misclassification rate was higher than others making it unsuitable
+```{r}
+logit3=glm(Legendary~Attack,data = pokemon1, family = binomial)
+summary(logit3)
+set.seed(123)
+mod_fit3 <- train(Legendary ~ Attack,  data=pokemon1, method="glm", family="binomial",trControl = ctrl, tuneLength = 5)
+pred3 = predict(mod_fit3, newdata=pokemon1)
+sum3=sum(pokemon1[,11]!=pred3)
+misclass3=(sum3/800)
+```
+We now plot the misclassification rates to find out the best model.
+```{r}
+misclasss=c(misclass,misclass1,misclass2,misclass3)
+
+
+data_for_plot <- tibble(mc= misclasss, model = 1:4)
+
+ggplot(data=data_for_plot, aes(y = mc, x = model), xlab("Model Number", ylab="Misclassification Rate"))+ geom_line()
+
+
+```
+The most optimal model is the one with all the predictors(model), so it is used to predict the test model.
+```{r}
+pred.final = predict(mod_fit1, newdata=pokemon2)
+sum4=sum(pokemon2[,11]!=pred.final)
+misclass4=(sum4/800)
+misclass4
+```
+
+The coefficients(line 78) are all positive meaning that an increase in any of the factors will lead to an increase in the probability that the particular pokemon is legendary.
+```{r}
+list1=list(model1=mod_fit,model2=mod_fit1,model3=mod_fit2)
+poke=data.frame(summary(list1))
+poke
+```
+For the next part of the project we take a look at the tree of the dataset
+```{r}
+pokemon3=pokemon[,-c(10,1,2,3)]
+tree.model=tree(Legendary ~ . -legend, pokemon3)
+plot(tree.model)
+text(tree.model, pretty = 0, cex=0.5, col='brown')
+```
+To get a more efficient model we take up 2 types of optimising. The first one is pruning which has been done below.
+```{r}
+set.seed(3)
+cv.pokemon = cv.tree(tree.model, FUN = prune.tree)
+par(mfrow = c(1, 2))
+plot(cv.pokemon$size, cv.pokemon$dev, type = "b",xlab = "Size", ylab = "Performance", col = "blue")
+prune.pokemon = prune.tree(tree.model, best = 9)
+tree.pred = predict(prune.pokemon, pokemon, type = "tree")
+plot(tree.pred)
+text(tree.pred, pretty = 0, cex=0.5, col='red')
+```
+
+We use randomforest as the second method under tree classification. In order to find the best mtry value and no of trees we plot them with increasing values of mtry with OOB on the y axis.
+```{r}
+set.seed(20)
+pokemon.forest = randomForest(Legendary ~ . -legend-Name, data = pokemon1, mtry = 6, importance = TRUE, ntrees = 1000)
+
+for (i in 2:6) {pokemon.forest.oob <- randomForest(Legendary ~ . -legend-Name, data = pokemon1, mtry = i, importance = TRUE, ntrees = 1000)
+  scatter.smooth(pokemon.forest.oob$err.rate[,1], xlab="N Trees", ylab="OOB")
+  
+}
+
+```
+MCR is least when ntrees is 250 for mtry=3. This model is hence used in our test data.
+```{r}
+pokemon.forest.optimal <- randomForest(Legendary ~ . -legend-Name, data = pokemon1, mtry = 3, importance = TRUE, ntrees = 1000,type="tree")
+summary(pokemon.forest.optimal)
+scatter.smooth(pokemon.forest.optimal$err.rate[,1],xlab = "No of trees",ylab = "Error Rate")
+```
+Upon overlaying the data we find that the error rate is minimised when mtry = 3 and it seems to decrease as the number of trees increase. Hence the model is optimised towards better results.
+
+#Summary
+The plots showed us that legendary pokemons generally have higher overall statistics than regular pokemons. With the regression model we can conclude the fact that as the attributes of the pokemon increase the higher probability we have of it having legendary status. With the corrplot and t test we figure out which predictors we can use. Predictors are selected as to have high correlation with the legend status but also not too highly correlated such as to avoid any discrepancies in the model. Using the predictor models we get to know that the model with all predictors has the lowest misclassification rate. The model had a higher p value for attack but upon further inspection it was found to be due to its correlation with the other predictors. This model was thus used to predict the test data with a classification rate of 97.125%. The tree model was created and pruned to get the best tree without irrelevant classifications. This model was used to predict a tree for the legendary data. The random forest method was used to find out the tree with the least MCR(Misclassification Rate). This model was then used to get the final tree. At the end of this project it is clear which all predictors are relevant to the legendary status of the pokemon, and a model has been created to predict it with good accuracy.
